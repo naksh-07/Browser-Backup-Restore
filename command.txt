@@ -1,0 +1,9 @@
+docker rm -f thorium
+
+docker run -d \
+  --name thorium \
+  -p 8085:3000 \
+  -v /root/browser:/config \
+  --shm-size=2g \
+  --cpus="2" \
+  zydou/thorium:latest
