@@ -1,64 +1,81 @@
 #!/bin/bash
 
-# === ADVANCED THORIUM TARBALL RESTORE SCRIPT ===
-# Author: ChatGPT & arkashshs 🧠🔥
-# Purpose: Restore Thorium browser state from a tarball and relaunch the container cleanly
+# === Thorium Browser Auto Restore Script ===
+# By: Captain Naksh  🛠️🧠
 
-# === CONFIG ===
-BACKUP_TARBALL="browser_backup_20250408_172136.tar.gz"  # Update this or autodetect latest
-RESTORE_DIR="/root/browser"
+# === CONFIGURATION ===
+GITNO_ENV_FILE="gitno.env"
+ZIP_PASSWORD="${ZIP_PASSWORD:?ZIP_PASSWORD not set in Codespace secrets}"
+MEGA_DOWNLOAD_DIR="/root"
 CONTAINER_NAME="thorium"
-IMAGE_NAME="zydou/thorium:latest"
-PORT=8085
 
-echo "📦 Backup tarball: $BACKUP_TARBALL"
-echo "📁 Target restore directory: $RESTORE_DIR"
-
-# === STEP 1: Sanity check for tarball ===
-if [[ ! -f "$BACKUP_TARBALL" ]]; then
-  echo "❌ Backup tarball not found: $BACKUP_TARBALL"
+# === STEP 1: Load GITNO Tag ===
+echo "📦 Loading GITNO tag..."
+if [[ -f "$GITNO_ENV_FILE" ]]; then
+  source "$GITNO_ENV_FILE"
+else
+  echo "❌ gitno.env not found at $GITNO_ENV_FILE"
   exit 1
 fi
 
-# === STEP 2: Stop and remove existing container if it exists ===
-if docker ps -a --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
-  echo "🧊 Stopping and removing container '$CONTAINER_NAME'..."
-  docker stop "$CONTAINER_NAME" >/dev/null || true
-  docker rm "$CONTAINER_NAME" >/dev/null || true
+if [[ -z "$GITNO" ]]; then
+  echo "❌ GITNO not set in gitno.env"
+  exit 1
 fi
 
-# === STEP 3: Prepare restore directory ===
-echo "📁 Preparing restore directory..."
-mkdir -p "$RESTORE_DIR"
-rm -rf "$RESTORE_DIR"/*
+# === STEP 2: Search Backup on MEGA ===
+echo "🔍 Searching for latest backup on MEGA for tag: $GITNO"
+MEGA_FILE_NAME=$(mega-ls | grep "${GITNO}_browser_backup_" | sort | tail -n 1)
 
-# === STEP 4: Extract the tarball ===
-echo "📦 Extracting backup into $RESTORE_DIR..."
-tar -xzf "$BACKUP_TARBALL" -C "$RESTORE_DIR"
+if [[ -z "$MEGA_FILE_NAME" ]]; then
+  echo "❌ No backup found on MEGA for $GITNO"
+  exit 1
+fi
+
+echo "📥 Found backup: $MEGA_FILE_NAME. Downloading..."
+mega-get "$MEGA_FILE_NAME" "$MEGA_DOWNLOAD_DIR"
 if [[ $? -ne 0 ]]; then
-  echo "❌ Failed to extract tarball."
+  echo "❌ MEGA download failed."
   exit 1
 fi
 
-# === STEP 5: Fix ownership for container user (911:911) ===
-echo "🔒 Setting proper permissions..."
-chown -R 911:911 "$RESTORE_DIR"
+# === STEP 3: Clean any old browser directory ===
+echo "🧼 Cleaning old /root/browser..."
+rm -rf /root/browser
 
-# === STEP 6: Launch Thorium container with restored data ===
-echo "🚀 Launching container..."
+# === STEP 4: Extract directly into /root (not /root/browser) ===
+echo "📂 Extracting backup into /root..."
+7z x -p"$ZIP_PASSWORD" "$MEGA_DOWNLOAD_DIR/$MEGA_FILE_NAME" -o/root >/dev/null
+
+if [[ $? -ne 0 ]]; then
+  echo "❌ Extraction failed. Check password or file."
+  exit 1
+fi
+echo "✅ Extraction successful."
+
+# === STEP 5: Remove Old Container (if exists) ===
+if docker ps -a --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
+  echo "🧨 Removing old container: $CONTAINER_NAME"
+  docker rm -f "$CONTAINER_NAME"
+fi
+
+# ✅ STEP : Fix ownership
+echo "🔧 Setting ownership to UID:GID 911:911"
+chown -R 911:911 /root/browser
+
+
+# === STEP 6: Launch Restored Container ===
+echo "🚀 Launching Thorium container..."
 docker run -d \
   --name "$CONTAINER_NAME" \
-  -p "$PORT:3000" \
-  -v "$RESTORE_DIR:/config" \
-  -e PUID=911 \
-  -e PGID=911 \
+  -p 8085:3000 \
+  -v /root/browser:/config \
   --shm-size=2g \
   --cpus="2" \
-  "$IMAGE_NAME"
+  rohan014233/thorium
 
-if [[ $? -ne 0 ]]; then
-  echo "❌ Failed to start container!"
-  exit 1
+if [[ $? -eq 0 ]]; then
+  echo "✅ Thorium container running at http://localhost:8085"
+else
+  echo "❌ Failed to launch container. Check logs."
 fi
-
-echo "✅ Restore complete! Thorium is running at: http://localhost:$PORT"
