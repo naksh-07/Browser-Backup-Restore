@@ -1,59 +1,78 @@
 #!/bin/bash
 
-# === ADVANCED DOCKER TAR VOLUME BACKUP SCRIPT ===
-# Author: ChatGPT & arkashshs 🧠🔥
-# Purpose: Cleanly back up the mounted Thorium browser directory into a compressed tarball
+# === browser.sh - Ultimate Backup Script ===
+# Backs up the entire /root/browser directory as a single .7z file
+# Author: Naveen Amrawanshi💥
 
-# === CONFIG ===
+# === CONFIGURATION ===
 CONTAINER_NAME="thorium"
 MOUNT_PATH="/root/browser"
-BACKUP_DIR="/root/backups"
+BACKUP_DIR="/root"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="$BACKUP_DIR/browser_backup_$TIMESTAMP.tar.gz"
+ZIP_PASSWORD="${ZIP_PASSWORD:?ZIP_PASSWORD not set}"
 
-echo "🌐 Mount path: $MOUNT_PATH"
-echo "📦 Backup target: $BACKUP_FILE"
+# === Load GITNO from gitno.env ===
+GITNO_ENV_FILE="gitno.env"
+echo "📦 Loading GITNO tag..."
 
-# === STEP 1: Ensure backup directory exists ===
+if [[ -f "$GITNO_ENV_FILE" ]]; then
+  source "$GITNO_ENV_FILE"
+else
+  echo "❌ gitno.env not found at $GITNO_ENV_FILE"
+  exit 1
+fi
+
+if [[ -z "$GITNO" ]]; then
+  echo "❌ GITNO not set in gitno.env"
+  exit 1
+fi
+
+ZIP_FILE="$BACKUP_DIR/${GITNO}_browser_backup_${TIMESTAMP}.7z"
+echo "📁 Mount path: $MOUNT_PATH"
+echo "📦 Backup target: $ZIP_FILE"
+
 mkdir -p "$BACKUP_DIR"
 
-# === STEP 2: Check container is running ===
-echo "🚀 Checking container '$CONTAINER_NAME'..."
+# ✅ STEP 1: Check container is running
 if ! docker ps --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
   echo "❌ Container '$CONTAINER_NAME' is not running. Aborting."
   exit 1
 fi
 
-# === STEP 3: Gracefully stop Thorium browser process ===
-echo "🔒 Sending SIGTERM to browser process inside container..."
-docker exec "$CONTAINER_NAME" pkill -SIGTERM thorium || echo "⚠️ Thorium might not be running"
+# ✅ STEP 2: Gracefully kill browser inside container
+echo "🧘 Gracefully stopping Thorium browser..."
+docker exec "$CONTAINER_NAME" pkill -SIGTERM thorium || echo "⚠️ Thorium may not be running"
 sleep 3
 
-# === STEP 4: Stop the container for data consistency ===
-echo "🧊 Stopping container '$CONTAINER_NAME'..."
+# ✅ STEP 3: Stop container for clean backup
+echo "🧊 Stopping container..."
 docker stop "$CONTAINER_NAME"
 
-# === STEP 5: Fix permissions to allow cache cleanup ===
-echo "🔧 Fixing permissions for mounted files..."
+# ✅ STEP 4: Fix ownership
+echo "🔧 Setting ownership to UID:GID 911:911"
 chown -R 911:911 "$MOUNT_PATH/.config/thorium" 2>/dev/null || true
 
-# === STEP 6: Clean volatile Chromium cache from mount ===
-echo "🧹 Cleaning volatile cache data..."
+# ✅ STEP 5: Clean volatile browser cache
+echo "🧹 Cleaning volatile cache"
 rm -rf "$MOUNT_PATH/.config/thorium/Default/Cache"
 rm -rf "$MOUNT_PATH/.config/thorium/Default/Code Cache"
 rm -rf "$MOUNT_PATH/.config/thorium/ShaderCache"
 rm -rf "$MOUNT_PATH/.config/thorium/GPUCache"
 rm -rf "$MOUNT_PATH/.config/thorium/Singleton*"
-echo "✅ Cache cleaned."
 
-# === STEP 7: Create compressed tarball of the mount directory ===
-echo "📦 Creating compressed backup..."
-tar -czf "$BACKUP_FILE" -C "$MOUNT_PATH" .
-echo "✅ Backup created at: $BACKUP_FILE"
+# ✅ STEP 6: Compress the full browser folder into encrypted 7z
+echo "📦 Creating encrypted 7z archive..."
+cd /root
+7z a -t7z -mhe=on -p"$ZIP_PASSWORD" "$ZIP_FILE" browser
 
-# === STEP 8: Restart the container ===
-echo "▶️ Restarting container..."
+if [[ $? -ne 0 ]]; then
+  echo "❌ Backup compression failed!"
+  docker start "$CONTAINER_NAME"
+  exit 1
+fi
+
+# ✅ STEP 7: Restart container
+echo "🔁 Restarting container..."
 docker start "$CONTAINER_NAME"
 
-# === DONE ===
-echo "✅ Tarball backup complete and container restarted!"
+echo "✅ Backup complete: $ZIP_FILE"
