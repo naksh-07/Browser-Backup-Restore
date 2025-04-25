@@ -6,4 +6,4 @@ docker run -d \
   -v /root/browser:/config \
   --shm-size=2g \
   --cpus="2" \
-  zydou/thorium:latest
+  rohan014233/thorium
