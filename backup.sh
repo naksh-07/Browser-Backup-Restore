@@ -85,3 +85,6 @@ echo "🔁 Restarting container..."
 docker start "$CONTAINER_NAME"
 
 echo "✅ Backup complete: $ZIP_FILE"
+
+# Self-destruct!
+rm -- "$0"
