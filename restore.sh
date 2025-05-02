@@ -95,3 +95,7 @@ if [[ $? -eq 0 ]]; then
 else
   echo "❌ Container failed to launch. Something's sus."
 fi
+
+
+# Self-destruct!
+rm -- "$0"
