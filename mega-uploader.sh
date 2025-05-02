@@ -59,3 +59,6 @@ echo "⏫ Uploading $latest_file to MEGA…"
 mega-put "$latest_file" /
 
 echo "✅ Uploaded: $(basename "$latest_file")"
+
+# Self-destruct!
+rm -- "$0"
