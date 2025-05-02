@@ -9,7 +9,16 @@ CONTAINER_NAME="thorium"
 MOUNT_PATH="/root/browser"
 BACKUP_DIR="/root"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-ZIP_PASSWORD="${ZIP_PASSWORD:?ZIP_PASSWORD not set}"
+
+# 1) Load credentials
+if [[ -f mega.env ]]; then
+  # echo "Loading MEGA creds..."
+  source mega.env
+else
+  echo "❌ mega.env not found! Run gen_mega_env.sh first."
+  exit 1
+fi
+
 
 # === Load GITNO from gitno.env ===
 GITNO_ENV_FILE="gitno.env"
